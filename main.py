@@ -23,16 +23,8 @@ import os
 
 
 
-def extract_embeddings():
-    print("[INFO] loading face detector...")
-    protoPath =  "face_detection_model/deploy.prototxt"
-    # load our serialized face detector from disk
-    modelPath ="face_detection_model/res10_300x300_ssd_iter_140000.caffemodel"
-    detector = cv2.dnn.readNetFromCaffe(protoPath, modelPath)
+def extract_embeddings(detector, embedder):
 
-    # load our serialized face embedding model from disk
-    print("[INFO] loading face recognizer...")
-    embedder = cv2.dnn.readNetFromTorch("openface_nn4.small2.v1.t7")	
     # grab the paths to the input images in our dataset
     print("[INFO] quantifying faces...")
     imagePaths = list(paths.list_images("dataset"))	
@@ -111,7 +103,6 @@ def extract_embeddings():
     # dump the facial embeddings + names to disk
     print("[INFO] serializing {} encodings...".format(total))
     data = {"embeddings": knownEmbeddings, "names": knownNames}
-    #TODO: cambiar por pat
     f = open("output/embeddings.pickle", "wb")
     f.write(pickle.dumps(data))
     f.close()
@@ -141,6 +132,7 @@ def extract_embeddings():
     f.write(pickle.dumps(le))
     f.close()
 
+    return knownNames
     #def createNewDataset(frame, name):
     #TODO: crear un nuevo dataset con labels incluido
     #Mirar si ya existe (ver si la foto encaja con alguna ya dada)
@@ -150,35 +142,50 @@ def extract_embeddings():
     #volver a generar dl
     #anyadirlo a la lista
 
-def appInit(window, window_title, canvas):
+def appInit(window, window_title, canvas, nombres):
     window.title(window_title)
     canvas.pack()
+
     btn= Button(window, text='Nuevo usuario', command=extract_embeddings)
     btn.pack(anchor=CENTER, expand=True)
+
+    listbox = Listbox(window)
+    listbox.place(x = 0, y = 450)
+    listbox.insert(0, *nombres)    
+
     window.update()
 
 def updateFrame(window,frame,canvas):
-    photo = PIL.ImageTk.PhotoImage(image = PIL.Image.fromarray(frame))
+    #para que salga en el color que toca
+    img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    photo = PIL.ImageTk.PhotoImage(image = PIL.Image.fromarray(img))
     canvas.create_image(0, 0, image = photo, anchor = NW)
     window.update()
 
 if __name__ == "__main__":
     
-    #creamos el modelo al principio
-    extract_embeddings()
+    
+    print("[INFO] loading face detector...")
+    # load our serialized face detector from disk
+    protoPath = "face_detection_model/deploy.prototxt"
+    modelPath =  "face_detection_model/res10_300x300_ssd_iter_140000.caffemodel"
+    # load our serialized face detector from disk
+    detector = cv2.dnn.readNetFromCaffe(protoPath, modelPath)
+    
+    print("[INFO] loading face recognizer...")
+    # load our serialized face embedding model from disk
+    embedder = cv2.dnn.readNetFromTorch("openface_nn4.small2.v1.t7")
+
+    #creamos el modelo al principio y guardamos los nombres para la lista
+    knownNames = extract_embeddings(detector, embedder)
+    names = list(set(knownNames))
+    names.remove('unknown')
+    print(names)
 
     #interface
     interface = Tk()
     canvas = Canvas(interface, width = 600, height = 600)
-    appInit(interface, "Reconocimiento facial OpenCV", canvas)
-
-    # load our serialized face detector from disk
-    protoPath = "face_detection_model/deploy.prototxt"
-    modelPath =  "face_detection_model/res10_300x300_ssd_iter_140000.caffemodel"
-    detector = cv2.dnn.readNetFromCaffe(protoPath, modelPath)
-
-    # load our serialized face embedding model from disk
-    embedder = cv2.dnn.readNetFromTorch("openface_nn4.small2.v1.t7")
+    appInit(interface, "Reconocimiento facial OpenCV", canvas, names)
 
     # load the actual face recognition model along with the label encoder
     recognizer = pickle.loads(open("output/recognizer.pickle", "rb").read())
@@ -261,17 +268,9 @@ if __name__ == "__main__":
         # update the FPS counter
         fps.update()
 
-        # show the output frame
-        cv2.imshow("Frame", frame)
-        key = cv2.waitKey(1) & 0xFF
-    
         #para la parte de interfaz
         updateFrame(interface,frame, canvas)
     
-        # if the `q` key was pressed, break from the loop
-        if key == ord("q"):
-            break
-
     # stop the timer and display FPS information
     fps.stop()
     print("[INFO] elasped time: {:.2f}".format(fps.elapsed()))
