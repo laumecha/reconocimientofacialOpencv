@@ -1,10 +1,3 @@
-# 3
-# USAGE
-# python recognize_video.py --detector face_detection_model \
-#	--embedding-model openface_nn4.small2.v1.t7 \
-#	--recognizer output/recognizer.pickle \
-#	--le output/le.pickle
-
 # import the necessary packages
 from tkinter import *
 from imutils.video import VideoStream
@@ -28,27 +21,26 @@ global knownNames
 global names
 global recognizer
 global le
+global datapath
 
 def extract_embeddings():
 
-    # grab the paths to the input images in our dataset
+    # guardamos los paths de las personas guardadas
     print("[INFO] quantifying faces...")
-    imagePaths = list(paths.list_images("dataset"))	
+    imagePaths = list(paths.list_images("users"))	
 
     # initialize our lists of extracted facial embeddings and
     # corresponding people names
-    knownEmbeddings = []
+    knownEmbeddings = [] 
+    global knownNames
     knownNames = []
 
     # initialize the total number of faces processed
     total = 0
 
     # loop over the image paths
-    #TODO: posible: solo procesr imagenes pendientes
     for (i, imagePath) in enumerate(imagePaths):
         # extract the person name from the image path
-        print("[INFO] processing image {}/{}".format(i + 1,
-            len(imagePaths)))
         name = imagePath.split(os.path.sep)[-2]	
 
         # load the image, resize it to have a width of 600 pixels (while
@@ -109,13 +101,14 @@ def extract_embeddings():
     # dump the facial embeddings + names to disk
     print("[INFO] serializing {} encodings...".format(total))
     data = {"embeddings": knownEmbeddings, "names": knownNames}
-    f = open("output/embeddings.pickle", "wb")
+    embeddings_path = os.path.join(datapath,"output", "embeddings.pickle")
+    f = open(embeddings_path, "wb")
     f.write(pickle.dumps(data))
     f.close()
 
     # load the face embeddings
     print("[INFO] loading face embeddings...")
-    data = pickle.loads(open("output/embeddings.pickle", "rb").read())
+    data = pickle.loads(open(embeddings_path, "rb").read())
 
     # encode the labels
     print("[INFO] encoding labels...")
@@ -129,30 +122,26 @@ def extract_embeddings():
     recognizer.fit(data["embeddings"], labels)
 
     # write the actual face recognition model to disk
-    f = open("output/recognizer.pickle", "wb")
+    recognizer_path = os.path.join(datapath,"output", "recognizer.pickle")
+    f = open(recognizer_path, "wb")
     f.write(pickle.dumps(recognizer))
     f.close()
 
     # write the label encoder to disk
-    f = open("output/le.pickle", "wb")
+    le_path= os.path.join(datapath,"output", "le.pickle")
+    f = open(le_path, "wb")
     f.write(pickle.dumps(le))
     f.close()
 
-    return knownNames
-    #def createNewDataset(frame, name):
-    #TODO: crear un nuevo dataset con labels incluido
-    #Mirar si ya existe (ver si la foto encaja con alguna ya dada)
-    #si no 
-    #Crear una carpeta con nombre dado
-    #guardar los fotogramas necesarios (mirar en la web)
-    #volver a generar dl
-    #anyadirlo a la lista
-
 def reload():
+    global datapath
+    datapath = 'data'
     print("[INFO] loading face detector...")
-    # load our serialized face detector from disk
-    protoPath = "face_detection_model/deploy.prototxt"
-    modelPath =  "face_detection_model/res10_300x300_ssd_iter_140000.caffemodel"
+    #cargamos la configuracion de las capas de la red neuronal
+    protoPath = os.path.join(datapath,"face_detection_model", "deploy.prototxt")
+    #cargamos el modelo de Caffe para reconocer caras
+    modelPath = os.path.join(datapath,"face_detection_model", "res10_300x300_ssd_iter_140000.caffemodel")
+    
     # load our serialized face detector from disk
     global detector
     detector = cv2.dnn.readNetFromCaffe(protoPath, modelPath)
@@ -160,20 +149,23 @@ def reload():
     print("[INFO] loading face recognizer...")
     # load our serialized face embedding model from disk
     global embedder
-    embedder = cv2.dnn.readNetFromTorch("openface_nn4.small2.v1.t7")
+    embedder_path = os.path.join(datapath, "openface_nn4.small2.v1.t7")
+    embedder = cv2.dnn.readNetFromTorch(embedder_path)
 
-    #creamos el modelo al principio, guardamos los nombres para la lista y borramos duplicados
-    global knownNames
-    knownNames = extract_embeddings()
+    #guardamos los nombres para la lista y borramos duplicados
+    extract_embeddings()
     global names
     names = list(set(knownNames))
     names.remove('unknown')
 
     global recognizer
     global le
+
     # load the actual face recognition model along with the label encoder
-    recognizer = pickle.loads(open("output/recognizer.pickle", "rb").read())
-    le = pickle.loads(open("output/le.pickle", "rb").read())
+    recognizer_path = os.path.join(datapath,"output", "recognizer.pickle")
+    recognizer = pickle.loads(open(recognizer_path, "rb").read())
+    le_path = os.path.join(datapath,"output", "le.pickle")
+    le = pickle.loads(open(le_path, "rb").read())
 
 def appInit(window_title):
 
@@ -181,7 +173,7 @@ def appInit(window_title):
     canvas.pack()
 
     btn = Button(interface, text='Nuevo usuario', command=newUser)
-    btn.place(x = 150, y = 450)
+    btn.place(x = 200, y = 500)
 
     listbox.place(x = 0, y = 450)
     listbox.insert(0, *names)    
@@ -209,26 +201,27 @@ def newUser():
     btn= Button(newWindow, text='Aceptar', command= lambda: acceptButtonNewUser(text))
     btn.pack(anchor=CENTER, expand=True)
 
-    #output = "frame-" + time.strftime("%d-%m-%Y-%H-%M-%S") + ".jpg"
-    #cv2.imwrite(output, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-
 def acceptButtonNewUser(text):
     name = text.get()
-    #TODO: si el nombre no es null 
-    done = makeDir(name)
-    if done:
-        for x in range(0, 5):
-            updateFrame()
-            captura = vs.read()
-            message = " Faltan " + str(5-(x+1)) + " capturas"
-            labelText.set(message)  
-            time.sleep(1)
-            saveCaptura(name,x)
-        labelText.set("Pulsa el boton para empezar")  
-        listbox.insert(END, name)
-        reload()
+    if len(name) != 0:
+        done = makeDir(name)
+        if done:
+            for x in range(0, 5):
+                updateFrame()
+                captura = vs.read()
+                message = " Faltan " + str(5-(x+1)) + " capturas"
+                labelText.set(message)  
+                time.sleep(1)
+                saveCaptura(name,x)
+            labelText.set("Pulsa el boton para empezar")  
+            listbox.insert(END, name)
+            reload()
+        else :
+            message = "Introduce un nombre no existente"
+            labelText.set(message) 
     else :
-        message = "introduce un nombre"
+        message = "Introduce un nombre"
+        labelText.set(message) 
 
 def makeDir(dirName):
     res = isinstance(dirName, str) 
@@ -236,10 +229,10 @@ def makeDir(dirName):
     if res: #esto no funciona
         try:
             # Create target Directory
-            os.mkdir('dataset/'+dirName)
+            os.mkdir('users/'+dirName)
             print("Directory " , dirName ,  " Created ") 
             return True
-        except Error: #esto no sabe que es
+        except: #esto no sabe que es
             print("Directory " , dirName ,  " already exists")
             return False
     else:
@@ -248,7 +241,7 @@ def makeDir(dirName):
     
 def saveCaptura(name,x):
     output = name + str(x) + ".jpg"
-    save_path = os.path.join('dataset', name, output)
+    save_path = os.path.join('users', name, output)
     cv2.imwrite(save_path, captura)
 
 
