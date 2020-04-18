@@ -44,7 +44,7 @@ I1
 I0
 tp19
 bI00
-S'adrian\x00trisha\x00unknown'
+S'adrian\x00laura\x00\x00unknown'
 p20
 tp21
 bsS'_sklearn_version'

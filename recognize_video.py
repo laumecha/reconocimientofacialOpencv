@@ -15,6 +15,7 @@ import pickle
 import time
 import cv2
 import os
+import msvcrt
 
 # construct the argument parser and parse the arguments
 ap = argparse.ArgumentParser()

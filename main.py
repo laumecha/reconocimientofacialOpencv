@@ -8,9 +8,9 @@
 # import the necessary packages
 from tkinter import *
 from imutils.video import VideoStream
-from imutils.video import FPS
 from sklearn.preprocessing import LabelEncoder
 from imutils import paths
+from ctypes import *
 from sklearn.svm import SVC
 import PIL.Image, PIL.ImageTk
 import numpy as np
@@ -20,10 +20,16 @@ import pickle
 import time
 import cv2
 import os
+import termios
 
+global detector
+global embedder
+global knownNames
+global names
+global recognizer
+global le
 
-
-def extract_embeddings(detector, embedder):
+def extract_embeddings():
 
     # grab the paths to the input images in our dataset
     print("[INFO] quantifying faces...")
@@ -142,68 +148,134 @@ def extract_embeddings(detector, embedder):
     #volver a generar dl
     #anyadirlo a la lista
 
-def appInit(window, window_title, canvas, nombres):
-    window.title(window_title)
-    canvas.pack()
-
-    btn= Button(window, text='Nuevo usuario', command=extract_embeddings)
-    btn.pack(anchor=CENTER, expand=True)
-
-    listbox = Listbox(window)
-    listbox.place(x = 0, y = 450)
-    listbox.insert(0, *nombres)    
-
-    window.update()
-
-def updateFrame(window,frame,canvas):
-    #para que salga en el color que toca
-    img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    photo = PIL.ImageTk.PhotoImage(image = PIL.Image.fromarray(img))
-    canvas.create_image(0, 0, image = photo, anchor = NW)
-    window.update()
-
-if __name__ == "__main__":
-    
-    
+def reload():
     print("[INFO] loading face detector...")
     # load our serialized face detector from disk
     protoPath = "face_detection_model/deploy.prototxt"
     modelPath =  "face_detection_model/res10_300x300_ssd_iter_140000.caffemodel"
     # load our serialized face detector from disk
+    global detector
     detector = cv2.dnn.readNetFromCaffe(protoPath, modelPath)
     
     print("[INFO] loading face recognizer...")
     # load our serialized face embedding model from disk
+    global embedder
     embedder = cv2.dnn.readNetFromTorch("openface_nn4.small2.v1.t7")
 
-    #creamos el modelo al principio y guardamos los nombres para la lista
-    knownNames = extract_embeddings(detector, embedder)
+    #creamos el modelo al principio, guardamos los nombres para la lista y borramos duplicados
+    global knownNames
+    knownNames = extract_embeddings()
+    global names
     names = list(set(knownNames))
     names.remove('unknown')
-    print(names)
 
-    #interface
-    interface = Tk()
-    canvas = Canvas(interface, width = 600, height = 600)
-    appInit(interface, "Reconocimiento facial OpenCV", canvas, names)
-
+    global recognizer
+    global le
     # load the actual face recognition model along with the label encoder
     recognizer = pickle.loads(open("output/recognizer.pickle", "rb").read())
     le = pickle.loads(open("output/le.pickle", "rb").read())
+
+def appInit(window_title):
+
+    interface.title("Reconocimiento facial OpenCV")
+    canvas.pack()
+
+    btn = Button(interface, text='Nuevo usuario', command=newUser)
+    btn.place(x = 150, y = 450)
+
+    listbox.place(x = 0, y = 450)
+    listbox.insert(0, *names)    
+
+    interface.update()
+
+def updateFrame():
+    img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    photo = PIL.ImageTk.PhotoImage(image = PIL.Image.fromarray(img))
+    canvas.create_image(0, 0, image = photo, anchor = NW)
+    interface.update()
+
+def newUser():
+    newWindow = Toplevel(interface)
+    newWindow.title("Nuevo usuario")
+    newWindow.geometry("350x300")
+
+    text = Entry(newWindow)
+    text.place(x=50, y=50)
+
+    labelText.set("Pulsa el boton para empezar")    
+    label = Label( newWindow, textvariable=labelText, relief=RAISED )
+    label.pack()
+
+    btn= Button(newWindow, text='Aceptar', command= lambda: acceptButtonNewUser(text))
+    btn.pack(anchor=CENTER, expand=True)
+
+    #output = "frame-" + time.strftime("%d-%m-%Y-%H-%M-%S") + ".jpg"
+    #cv2.imwrite(output, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+
+def acceptButtonNewUser(text):
+    name = text.get()
+    #TODO: si el nombre no es null 
+    done = makeDir(name)
+    if done:
+        for x in range(0, 5):
+            updateFrame()
+            captura = vs.read()
+            message = " Faltan " + str(5-(x+1)) + " capturas"
+            labelText.set(message)  
+            time.sleep(1)
+            saveCaptura(name,x)
+        labelText.set("Pulsa el boton para empezar")  
+        listbox.insert(END, name)
+        reload()
+    else :
+        message = "introduce un nombre"
+
+def makeDir(dirName):
+    res = isinstance(dirName, str) 
+
+    if res: #esto no funciona
+        try:
+            # Create target Directory
+            os.mkdir('dataset/'+dirName)
+            print("Directory " , dirName ,  " Created ") 
+            return True
+        except Error: #esto no sabe que es
+            print("Directory " , dirName ,  " already exists")
+            return False
+    else:
+        print("ckech the input")
+        return False
+    
+def saveCaptura(name,x):
+    output = name + str(x) + ".jpg"
+    save_path = os.path.join('dataset', name, output)
+    cv2.imwrite(save_path, captura)
+
+
+if __name__ == "__main__":   
+
+    reload()
 
     # initialize the video stream, then allow the camera sensor to warm up
     print("[INFO] starting video stream...")
     vs = VideoStream(src=0).start()
     time.sleep(2.0)
 
-    # start the FPS throughput estimator
-    fps = FPS().start()
+    #interfaz
+    interface = Tk()
+    canvas = Canvas(interface, width = 600, height = 600) 
+    listbox = Listbox(interface)
+    labelText = StringVar()
+    appInit( "Reconocimiento facial OpenCV")
+
+    frame = vs.read()
+    captura = frame
 
     # loop over frames from the video file stream
     while True:
-        
         # grab the frame from the threaded video stream
         frame = vs.read()
+        captura = frame
 
         # resize the frame to have a width of 600 pixels (while
         # maintaining the aspect ratio), and then grab the image
@@ -215,6 +287,8 @@ if __name__ == "__main__":
         imageBlob = cv2.dnn.blobFromImage(
             cv2.resize(frame, (300, 300)), 1.0, (300, 300),
             (104.0, 177.0, 123.0), swapRB=False, crop=False)
+
+        #para manteren la imagen sin el cuadro
 
         # apply OpenCV's deep learning-based face detector to localize
         # faces in the input image
@@ -265,17 +339,8 @@ if __name__ == "__main__":
                 cv2.putText(frame, text, (startX, y),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
 
-        # update the FPS counter
-        fps.update()
-
         #para la parte de interfaz
-        updateFrame(interface,frame, canvas)
-    
-    # stop the timer and display FPS information
-    fps.stop()
-    print("[INFO] elasped time: {:.2f}".format(fps.elapsed()))
-    print("[INFO] approx. FPS: {:.2f}".format(fps.fps()))
+        updateFrame()
 
-    # do a bit of cleanup
     cv2.destroyAllWindows()
     vs.stop()
