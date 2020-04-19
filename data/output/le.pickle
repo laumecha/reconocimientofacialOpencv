@@ -25,7 +25,7 @@ p10
 tp11
 Rp12
 (I1
-(I5
+(I3
 tp13
 cnumpy
 dtype
@@ -44,7 +44,7 @@ I1
 I0
 tp19
 bI00
-S'Laura\x00\x00adrian\x00dfdf\x00\x00\x00lauraosunknown'
+S'adrian\x00laura\x00\x00unknown'
 p20
 tp21
 bsS'_sklearn_version'
